@@ -1,0 +1,11 @@
+vcpkg/
+vcpkg_installed/
+*/**.exe
+*/**.dll
+*/**.lib
+*/**.bin
+.idea/
+build/
+bin/
+Debug/
+Release/
