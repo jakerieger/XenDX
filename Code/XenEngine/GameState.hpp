@@ -9,6 +9,7 @@
 #include "ComponentManager.hpp"
 #include "TransformComponent.hpp"
 #include <set>
+#include <stdexcept>
 
 namespace x {
     using std::set;
@@ -56,22 +57,21 @@ namespace x {
         template<typename T>
         T& AddComponent(EntityId entity) {
             if constexpr (std::is_same_v<T, TransformComponent>) {
-                return _transforms.AddComponent(entity);
+                return _transforms.AddComponent(entity).component;
             }
-
-            return None;
+            throw std::invalid_argument("Type T does not exist");
         }
 
         template<typename T>
         const ComponentManager<T>& GetComponents() const {
             if constexpr (std::is_same_v<T, TransformComponent>) { return _transforms; }
-            return None;
+            throw std::invalid_argument("Type T does not exist");
         }
 
         template<typename T>
         ComponentManager<T>& GetComponents() {
             if constexpr (std::is_same_v<T, TransformComponent>) { return _transforms; }
-            return None;
+            throw std::invalid_argument("Type T does not exist");
         }
 
     private:

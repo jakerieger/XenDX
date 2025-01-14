@@ -2,6 +2,7 @@
 // Created: 1/13/2025.
 //
 
+#include "Scene.hpp"
 #include "Types.hpp"
 
 #include <Windows.h>
@@ -487,7 +488,17 @@ int main() {
     if (!engine.Initialize(GetModuleHandleA(x::None), SW_SHOWMAXIMIZED, 1280, 720)) {
         return EXIT_FAILURE;
     }
+
+    auto state       = x::GameState();
+    const auto scene = new x::Scene("MainScene", state);
+    auto root        = scene->CreateEntity();
+    auto cube        = scene->CreateEntity(root);
+    auto& transform  = state.AddComponent<x::TransformComponent>(cube);
+    transform.SetPosition({0, 0, 5});
+
     engine.Run();
+
+    delete scene;
 
     return 0;
 }

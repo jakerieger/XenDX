@@ -9,3 +9,7 @@ add_executable(testbed
         ${COMMON}/Types.hpp
         main.cpp
 )
+
+target_link_libraries(testbed PRIVATE
+        Xen
+)
