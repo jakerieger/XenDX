@@ -20,4 +20,5 @@ include_directories(
         #        ${VENDOR}
 )
 
+add_subdirectory(Code/XenEngine)
 add_subdirectory(Code/Testbed)

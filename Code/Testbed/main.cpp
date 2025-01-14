@@ -20,6 +20,78 @@ using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 
 namespace x {
+    class Scene;
+    class Camera;
+
+    struct RenderTargets {
+        ComPtr<ID3D11RenderTargetView> mainRTV;
+        ComPtr<ID3D11ShaderResourceView> mainSRV;
+
+        // G-Buffer components for deferred lighting
+        struct GBuffer {
+            ComPtr<ID3D11RenderTargetView> albedoRTV;    // R8G8B8A8_UNORM
+            ComPtr<ID3D11RenderTargetView> normalRTV;    // R10G10B10A2_UNORM
+            ComPtr<ID3D11RenderTargetView> materialRTV;  // R8G8B8A8_UNORM (Roughness, Metallic, AO)
+            ComPtr<ID3D11RenderTargetView> emissiveRTV;  // R16G16B16A16_FLOAT (HDR emission)
+            ComPtr<ID3D11DepthStencilView> depthDSV;     // D24_UNORM_S8_UINT
+
+            // Corresponding SRVs for reading in lighting pass
+            ComPtr<ID3D11ShaderResourceView> albedoSRV;
+            ComPtr<ID3D11ShaderResourceView> normalSRV;
+            ComPtr<ID3D11ShaderResourceView> materialSRV;
+            ComPtr<ID3D11ShaderResourceView> emissiveSRV;
+            ComPtr<ID3D11ShaderResourceView> depthSRV;
+        } gBuffer;
+
+        struct ShadowMaps {
+            ComPtr<ID3D11DepthStencilView> cascadeDSV[4];
+            ComPtr<ID3D11ShaderResourceView> cascadeSRV[4];
+        } shadowMaps;
+
+        struct GlobalIllumination {
+            ComPtr<ID3D11RenderTargetView> lightProbeRTV;  // For light probe GI
+            ComPtr<ID3D11ShaderResourceView> lightProbeSRV;
+            ComPtr<ID3D11RenderTargetView> irradianceRTV;  // For irradiance caching
+            ComPtr<ID3D11ShaderResourceView> irradianceSRV;
+        } gi;
+
+        struct PostProcess {
+            ComPtr<ID3D11RenderTargetView> bloomRTV;  // For HDR bloom
+            ComPtr<ID3D11ShaderResourceView> bloomSRV;
+            ComPtr<ID3D11RenderTargetView> ldrTargetRTV;  // Final LDR output
+            ComPtr<ID3D11ShaderResourceView> ldrTargetSRV;
+        } postProcess;
+    };
+
+    class RenderPipeline {
+    public:
+        void Initialize(ID3D11Device* device, ID3D11DeviceContext* context) {
+            CreateRenderTargetViews();
+            CreateSamplers();
+            CreateConstantBuffers();
+            InitializeShadowMapping();
+            InitializeGI();
+            InitializePostProcess();
+        }
+
+        void Render(/*Scene* scene, Camera* camera*/);
+
+    private:
+        void RenderShadowMaps();
+        void RenderGBuffer();
+        void UpdateGI();
+        void RenderLighting();
+        void RenderTransparentObjects();
+        void PostProcess();
+
+        void CreateRenderTargetViews();
+        void CreateSamplers();
+        void CreateConstantBuffers();
+        void InitializeShadowMapping();
+        void InitializeGI();
+        void InitializePostProcess();
+    };
+
     struct DisplayMode {
         DXGI_MODE_DESC mode;
         str description;
@@ -59,6 +131,10 @@ namespace x {
         void Update();
         void Render();
         void Cleanup();
+
+        // Window event callbacks
+        void OnResize(u32 width, u32 height);
+        void OnKeyDown(u32 keycode);
 
         HWND _hwnd;
         int _width, _height;
@@ -259,7 +335,9 @@ namespace x {
         return true;
     }
 
-    GameEngine::GameEngine() : _hwnd(None), _width(1280), _height(720), _title("XenDX | Testbed") {}
+    GameEngine::GameEngine()
+        : _hwnd(None), _width(1280), _height(720), _title("XenDX | Testbed"), _currentMode({}),
+          _fullscreen(true), _clientRect({}) {}
 
     GameEngine::~GameEngine() {
         Cleanup();
@@ -297,21 +375,26 @@ namespace x {
         wc.lpszClassName = "GameEngineClass";
         RegisterClassExA(&wc);
 
-        RECT screenRect;
-        const HWND desktopWindow = GetDesktopWindow();
-        GetWindowRect(desktopWindow, &screenRect);
+        DWORD style   = WS_OVERLAPPEDWINDOW;
+        DWORD exStyle = WS_EX_APPWINDOW;
 
-        _width = screenRect.right = screenRect.left;
-        _height = screenRect.bottom = screenRect.top;
+        RECT clientRect = {0, 0, _width, _height};
+        AdjustWindowRectEx(&clientRect, style, false, exStyle);
+        RECT workArea;
+        SystemParametersInfoA(SPI_GETWORKAREA, 0, &workArea, 0);
+        const i32 x = workArea.left +
+                      (workArea.right - workArea.left - (clientRect.right - clientRect.left)) / 2;
+        const i32 y = workArea.top +
+                      (workArea.bottom - workArea.top - (clientRect.bottom - clientRect.top)) / 2;
 
-        _hwnd = CreateWindowExA(WS_EX_APPWINDOW,
+        _hwnd = CreateWindowExA(exStyle,
                                 wc.lpszClassName,
                                 _title.c_str(),
-                                WS_POPUP,
-                                screenRect.left,
-                                screenRect.top,
-                                _width,
-                                _height,
+                                style,
+                                x,
+                                y,
+                                clientRect.right - clientRect.left,
+                                clientRect.bottom - clientRect.top,
                                 None,
                                 None,
                                 hInstance,
@@ -320,6 +403,8 @@ namespace x {
         if (!_hwnd) { return false; }
 
         ShowWindow(_hwnd, nCmdShow);
+        UpdateWindow(_hwnd);
+
         return true;
     }
 
@@ -341,6 +426,44 @@ namespace x {
         if (_context) _context->ClearState();
     }
 
+    void GameEngine::OnResize(u32 width, u32 height) {
+        if (width == _width && height == _height) { return; }
+        ResizeSwapChain(width, height);
+    }
+
+    void GameEngine::OnKeyDown(u32 keycode) {
+        if (keycode == VK_ESCAPE) {
+            PostQuitMessage(0);
+            return;
+        }
+
+        if (keycode == VK_F11) { ToggleFullscreen(); }
+    }
+
+    LRESULT GameEngine::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        switch (msg) {
+            case WM_DESTROY:
+                PostQuitMessage(0);
+                return 0;
+
+            case WM_SIZE: {
+                const u32 width  = (u32)LOWORD(lParam);
+                const u32 height = (u32)HIWORD(lParam);
+                if (width == 0 || height == 0) { return 0; }
+                OnResize(width, height);
+            }
+                return 0;
+
+            case WM_KEYDOWN:
+                OnKeyDown((u32)wParam);
+
+            default:
+                break;
+        }
+
+        return DefWindowProcA(hwnd, msg, wParam, lParam);
+    }
+
     LRESULT GameEngine::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         GameEngine* engine = None;
 
@@ -354,34 +477,6 @@ namespace x {
         }
 
         if (engine) { return engine->HandleMessage(hwnd, msg, wParam, lParam); }
-
-        return DefWindowProcA(hwnd, msg, wParam, lParam);
-    }
-
-    LRESULT GameEngine::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        switch (msg) {
-            case WM_DESTROY:
-                PostQuitMessage(0);
-                return 0;
-
-            case WM_SIZE:
-                // Handle window resizing
-                // auto w = LOWORD(lParam);
-                // auto h = HIWORD(lParam);
-                // ResizeSwapChain(w, h);
-                // SetResolution(w, h);
-
-                return 0;
-
-            case WM_KEYDOWN:
-                if (wParam == VK_ESCAPE) {
-                    PostQuitMessage(0);
-                    return 0;
-                }
-
-            default:
-                break;
-        }
 
         return DefWindowProcA(hwnd, msg, wParam, lParam);
     }
