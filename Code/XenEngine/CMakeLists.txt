@@ -1,6 +1,7 @@
 project(XenDX)
 
 add_library(Xen STATIC
+        # Core Engine Components
         ${ENGINE}/Camera.cpp
         ${ENGINE}/Camera.hpp
         ${ENGINE}/ComponentManager.hpp
@@ -11,6 +12,11 @@ add_library(Xen STATIC
         ${ENGINE}/Resource.hpp
         ${ENGINE}/TransformComponent.hpp
         ${ENGINE}/TransformComponent.cpp
+        # DirectX 11 Abstractions
+        ${ENGINE}/DX11/DxGraphicsDevice.cpp
+        ${ENGINE}/DX11/DxGraphicsDevice.hpp
+        ${ENGINE}/DX11/DxBuffer.cpp
+        ${ENGINE}/DX11/DxBuffer.hpp
 )
 
 target_link_libraries(Xen PRIVATE
