@@ -21,6 +21,14 @@ namespace x::dx {
         Compute = 1 << 2,
     };
 
+    inline ShaderStages operator|(ShaderStages a, ShaderStages b) {
+        return CAST<ShaderStages>(CAST<u32>(a) | CAST<u32>(b));
+    }
+
+    inline ShaderStages operator&(ShaderStages a, ShaderStages b) {
+        return CAST<ShaderStages>(CAST<u32>(a) & CAST<u32>(b));
+    }
+
     inline bool HasStage(ShaderStages stages, ShaderStages stage) {
         return (CAST<u32>(stages) & CAST<u32>(stage)) != 0;
     }

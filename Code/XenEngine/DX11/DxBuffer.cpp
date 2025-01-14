@@ -23,7 +23,7 @@ namespace x::dx {
     }
 
     void DxBuffer::BindAsVertexBuffer(u32 slot, u32 stride, u32 offset) const {
-        if (!(_description.BindFlags & D3D11_BIND_VERTEX_BUFFER) == 0) {
+        if ((_description.BindFlags & D3D11_BIND_VERTEX_BUFFER) == 0) {
             Panic("Buffer description has incorrect BindFlags for vertex buffer.");
         }
         ID3D11Buffer* buffer = _buffer.Get();
@@ -31,14 +31,14 @@ namespace x::dx {
     }
 
     void DxBuffer::BindAsIndexBuffer(DXGI_FORMAT format, u32 offset) const {
-        if (!(_description.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0) {
+        if ((_description.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0) {
             Panic("Buffer description has incorrect BindFlags for index buffer.");
         }
         _device.GetImmediateContext()->IASetIndexBuffer(_buffer.Get(), format, offset);
     }
 
     void DxBuffer::BindAsConstantBuffer(u32 slot, ShaderStages stages) const {
-        if (!(_description.BindFlags & D3D11_BIND_CONSTANT_BUFFER) == 0) {
+        if ((_description.BindFlags & D3D11_BIND_CONSTANT_BUFFER) == 0) {
             Panic("Buffer description has incorrect BindFlags for constant buffer.");
         }
         ID3D11Buffer* buffer = _buffer.Get();
